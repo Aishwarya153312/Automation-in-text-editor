@@ -1,0 +1,121 @@
+import tkinter as tk
+import nltk
+from nltk.corpus import words
+from transformers import pipeline
+
+# Download necessary data
+nltk.download('words')
+
+# Initialize resources
+word_list = words.words()
+text_generator = pipeline('text-generation', model='gpt2')
+
+def suggest_from_dictionary(prefix, limit=5):
+    """Suggest words from the dictionary starting with the given prefix."""
+    matches = [word for word in word_list if word.lower().startswith(prefix.lower())]
+    return [word[len(prefix):] for word in matches[:limit]]
+
+def suggest_from_gpt(text, limit=3):
+    """Generate suggestions using GPT-2 based on the provided text."""
+    try:
+        outputs = text_generator(
+            text,
+            max_length=len(text.split()) + 10,
+            num_return_sequences=limit,
+            do_sample=True,
+            temperature=0.7
+        )
+        suggestions = []
+        for output in outputs:
+            completed_text = output['generated_text'][len(text):].strip()
+            next_words = completed_text.split()
+            if next_words:
+                suggestions.append(next_words[0])
+        return list(set(suggestions))
+    except Exception as e:
+        print(f"[GPT-Error] {e}")
+        return []
+
+def on_key_release(event):
+    """Handle key release events in the text widget."""
+    if event.keysym in ("Up", "Down", "Return"):
+        return
+
+    content = text_widget.get("1.0", tk.END).strip()
+    suggestion_listbox.delete(0, tk.END)
+
+    if content:
+        last_word = content.split()[-1]
+        if len(content.split()) == 1 and len(last_word) < 5:
+            suggestions = suggest_from_dictionary(last_word)
+        else:
+            suggestions = suggest_from_gpt(content)
+
+        for suggestion in suggestions:
+            suggestion_listbox.insert(tk.END, suggestion)
+    else:
+        suggestion_listbox.delete(0, tk.END)
+
+def accept_suggestion(event=None):
+    """Insert the selected suggestion into the text widget."""
+    try:
+        selected = suggestion_listbox.get(suggestion_listbox.curselection())
+        if selected:
+            text_widget.insert(tk.END, selected + " ")
+            suggestion_listbox.delete(0, tk.END)
+    except Exception:
+        pass
+    return "break"  # Prevent default Enter behavior
+
+def on_down_arrow(event):
+    """Move selection down in the suggestion listbox."""
+    current = suggestion_listbox.curselection()
+    if current:
+        next_index = current[0] + 1
+        if next_index < suggestion_listbox.size():
+            suggestion_listbox.select_clear(current[0])
+            suggestion_listbox.select_set(next_index)
+            suggestion_listbox.activate(next_index)
+    else:
+        suggestion_listbox.select_set(0)
+        suggestion_listbox.activate(0)
+    return "break"
+
+def on_up_arrow(event):
+    """Move selection up in the suggestion listbox."""
+    current = suggestion_listbox.curselection()
+    if current:
+        prev_index = current[0] - 1
+        if prev_index >= 0:
+            suggestion_listbox.select_clear(current[0])
+            suggestion_listbox.select_set(prev_index)
+            suggestion_listbox.activate(prev_index)
+    else:
+        suggestion_listbox.select_set(0)
+        suggestion_listbox.activate(0)
+    return "break"
+
+# GUI Setup
+root = tk.Tk()
+root.title("Smart Autocomplete Editor")
+
+# Text widget for user input
+text_widget = tk.Text(root, width=60, height=30)
+text_widget.pack(padx=10, pady=10)
+
+# Bind events
+text_widget.bind("<KeyRelease>", on_key_release)
+text_widget.bind("<Return>", accept_suggestion)
+text_widget.bind("<Down>", on_down_arrow)
+text_widget.bind("<Up>", on_up_arrow)
+
+# Listbox for showing suggestions
+suggestion_listbox = tk.Listbox(root, height=5)
+suggestion_listbox.pack(padx=10, pady=(0, 10))
+
+# Button to accept selected suggestion manually
+accept_button = tk.Button(root, text="Accept Selected Suggestion", command=accept_suggestion)
+accept_button.pack(pady=(0, 10))
+
+# Start the GUI event loop
+root.mainloop()
